@@ -1,0 +1,31 @@
+{
+  "name": "ai-voice-intake",
+  "version": "1.0.0",
+  "description": "A real-time voice assistant that answers calls, transcribes speech, generates AI responses, and plays back audio. Integrates with Airtable and n8n for CRM, lead scoring, and automated follow-ups. Built with Twilio, Deepgram, ElevenLabs, and Node.js.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/winslow-intake/ai-voice-intake.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/winslow-intake/ai-voice-intake/issues"
+  },
+  "homepage": "https://github.com/winslow-intake/ai-voice-intake#readme",
+  "dependencies": {
+    "@deepgram/sdk": "^4.8.0",
+    "axios": "^1.10.0",
+    "dotenv": "^17.1.0",
+    "express": "^5.1.0",
+    "openai": "^5.8.2",
+    "twilio": "^5.7.2",
+    "ws": "^8.18.3"
+  }
+}
