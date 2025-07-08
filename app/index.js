@@ -19,7 +19,7 @@ app.post('/voice', (req, res) => {
   // Start streaming audio to your WebSocket endpoint
   const start = twiml.start();
   start.stream({
-    url: 'wss://your-render-subdomain.onrender.com/media', // replace with your actual wss endpoint
+    url: 'wss://ai-media-server.onrender.com', // replace with your actual wss endpoint
     track: 'inbound_track'
   });
 
