@@ -1,6 +1,8 @@
 const http = require('http');
 const WebSocket = require('ws');
-const { transcribeStream } = require('../app/deepgram-stream'); // You'll implement this next
+const { transcribeStream } = require('../app/deepgram-stream'); // Adjust if needed
+
+const PORT = process.env.PORT || 8080;
 
 const server = http.createServer();
 const wss = new WebSocket.Server({ server, path: '/media' });
@@ -10,14 +12,14 @@ wss.on('connection', (ws) => {
 
   ws.on('message', async (data) => {
     const msg = JSON.parse(data);
-    
+
     if (msg.event === 'start') {
       console.log('Stream started');
     }
 
     if (msg.event === 'media' && msg.media && msg.media.payload) {
       const audio = Buffer.from(msg.media.payload, 'base64');
-      transcribeStream(audio); // Real-time transcription (you’ll build this next)
+      transcribeStream(audio); // Real-time transcription
     }
 
     if (msg.event === 'stop') {
@@ -30,6 +32,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(8080, () => {
-  console.log('Media stream server listening on ws://localhost:8080');
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Listening on ws://0.0.0.0:${PORT}`);
 });
