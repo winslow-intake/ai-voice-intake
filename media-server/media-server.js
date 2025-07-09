@@ -16,10 +16,10 @@ wss.on('connection', (ws) => {
     if (msg.event === 'start') {
       console.log('Stream started');
     }
-
+    
     if (msg.event === 'media' && msg.media && msg.media.payload) {
-      const audio = Buffer.from(msg.media.payload, 'base64');
-      transcribeStream(audio); // Real-time transcription
+      const audioBuffer = Buffer.from(msg.media.payload, 'base64');
+      transcribeStream(audioBuffer); // ✅ Send to Deepgram
     }
 
     if (msg.event === 'stop') {
