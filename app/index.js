@@ -63,7 +63,29 @@ app.post('/process-transcript', async (req, res) => {
     const audioBuffer = await textToSpeech(aiResponse);
     console.log('Generated audio buffer, size:', audioBuffer.length);
 
-    // 3. Send response back to media-server to play to caller
+    // 3. Create TwiML to play the response
+    const twiml = new twilio.twiml.VoiceResponse();
+    
+    // Convert audio buffer to base64 for Twilio
+    const base64Audio = audioBuffer.toString('base64');
+    
+    // Play the ElevenLabs audio
+    twiml.play({
+      loop: 1
+    }, `data:audio/mpeg;base64,${base64Audio}`);
+    
+    // Keep the call alive for the next response
+    twiml.pause({ length: 30 });
+    
+    // 4. Send the TwiML to the active call using Twilio REST API
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    
+    await client.calls(callSid).update({
+      twiml: twiml.toString()
+    });
+
+    console.log('✅ AI response sent to caller successfully');
+
     res.json({ 
       success: true, 
       response: aiResponse,
@@ -72,6 +94,24 @@ app.post('/process-transcript', async (req, res) => {
 
   } catch (error) {
     console.error('Error processing transcript:', error);
+    
+    // Send fallback response to caller
+    try {
+      const fallbackTwiml = new twilio.twiml.VoiceResponse();
+      fallbackTwiml.say({
+        voice: 'alice',
+        language: 'en-US'
+      }, 'I apologize, but I had trouble processing that. Could you please repeat what happened?');
+      fallbackTwiml.pause({ length: 30 });
+      
+      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await client.calls(req.body.callSid).update({
+        twiml: fallbackTwiml.toString()
+      });
+    } catch (fallbackError) {
+      console.error('Fallback error:', fallbackError);
+    }
+    
     res.status(500).json({ error: 'Internal server error' });
   }
 });
