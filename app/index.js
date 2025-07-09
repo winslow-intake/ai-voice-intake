@@ -18,7 +18,7 @@ app.post('/voice', (req, res) => {
   // Start streaming audio to your WebSocket endpoint
   const start = twiml.start();
   start.stream({
-    url: 'wss://ai-media-server.onrender.com', // replace with your actual wss endpoint
+    url: 'wss://ai-media-server.onrender.com/media', // Make sure to include /media path
     track: 'inbound_track'
   });
 
@@ -28,7 +28,18 @@ app.post('/voice', (req, res) => {
     language: 'en-US'
   }, 'Hi, this is Marcus from Langston and Wells. I understand you\'ve been in an accident. Please tell me what happened.');
 
-  // Leave stream running indefinitely — no record block here
+  // Keep the call alive and listening
+  twiml.pause({ length: 30 }); // Wait 30 seconds for user to respond
+  
+  // If they don't respond, prompt again
+  twiml.say({
+    voice: 'alice',
+    language: 'en-US'
+  }, 'Are you still there? Please tell me what happened in your accident.');
+  
+  // Keep the call open indefinitely
+  twiml.pause({ length: 3600 }); // Wait 1 hour (effectively keeps call alive)
+
   res.type('text/xml');
   res.send(twiml.toString());
 });
