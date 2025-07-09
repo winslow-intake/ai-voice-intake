@@ -46,38 +46,70 @@ app.post('/voice', (req, res) => {
 
 // This endpoint will be called by your media-server when it has a complete transcript
 app.post('/process-transcript', async (req, res) => {
+  console.log('🔥 /process-transcript called with body:', req.body);
+  
   try {
     const { transcript, callSid } = req.body;
     
     if (!transcript || !callSid) {
+      console.error('❌ Missing transcript or callSid:', { transcript, callSid });
       return res.status(400).json({ error: 'Missing transcript or callSid' });
     }
 
-    console.log('Processing transcript:', transcript);
+    console.log('✅ Processing transcript:', transcript);
+    console.log('✅ Call SID:', callSid);
+
+    // Check if required functions exist
+    if (!generateResponse) {
+      console.error('❌ generateResponse function not found');
+      return res.status(500).json({ error: 'generateResponse function not available' });
+    }
+
+    if (!textToSpeech) {
+      console.error('❌ textToSpeech function not found');
+      return res.status(500).json({ error: 'textToSpeech function not available' });
+    }
 
     // 1. Generate AI response
+    console.log('🤖 Generating AI response...');
     const aiResponse = await generateResponse(transcript);
-    console.log('AI Response:', aiResponse);
+    console.log('✅ AI Response:', aiResponse);
 
-    // 2. Convert to speech with ElevenLabs
-    const audioBuffer = await textToSpeech(aiResponse);
-    console.log('Generated audio buffer, size:', audioBuffer.length);
+    // Truncate response if too long to avoid TwiML size limits
+    const maxResponseLength = 500; // Keep responses under 500 characters
+    const truncatedResponse = aiResponse.length > maxResponseLength 
+      ? aiResponse.substring(0, maxResponseLength) + "..."
+      : aiResponse;
+    
+    console.log('✅ Response length:', truncatedResponse.length, 'characters');
 
-    // 3. Create TwiML to play the response
+    // 2. For now, skip ElevenLabs to avoid TwiML size issues
+    // const audioBuffer = await textToSpeech(aiResponse);
+    // console.log('✅ Generated audio buffer, size:', audioBuffer.length);
+
+    // 3. Check if Twilio credentials exist
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      console.error('❌ Missing Twilio credentials');
+      return res.status(500).json({ error: 'Missing Twilio credentials' });
+    }
+
+    // 4. Create TwiML to play the response using Twilio's built-in TTS
+    console.log('📞 Creating TwiML response...');
     const twiml = new twilio.twiml.VoiceResponse();
     
-    // Convert audio buffer to base64 for Twilio
-    const base64Audio = audioBuffer.toString('base64');
-    
-    // Play the ElevenLabs audio
-    twiml.play({
-      loop: 1
-    }, `data:audio/mpeg;base64,${base64Audio}`);
+    // Use Twilio's built-in TTS (no size limit issues)
+    twiml.say({
+      voice: 'alice',
+      language: 'en-US'
+    }, truncatedResponse);
     
     // Keep the call alive for the next response
     twiml.pause({ length: 30 });
     
-    // 4. Send the TwiML to the active call using Twilio REST API
+    console.log('📝 TwiML size:', twiml.toString().length, 'characters');
+    
+    // 5. Send the TwiML to the active call using Twilio REST API
+    console.log('📡 Sending TwiML to active call...');
     const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     
     await client.calls(callSid).update({
@@ -89,14 +121,16 @@ app.post('/process-transcript', async (req, res) => {
     res.json({ 
       success: true, 
       response: aiResponse,
-      audioLength: audioBuffer.length 
+      twimlSize: twiml.toString().length
     });
 
   } catch (error) {
-    console.error('Error processing transcript:', error);
+    console.error('❌ Error in /process-transcript:', error);
+    console.error('❌ Error stack:', error.stack);
     
     // Send fallback response to caller
     try {
+      console.log('🔄 Sending fallback response...');
       const fallbackTwiml = new twilio.twiml.VoiceResponse();
       fallbackTwiml.say({
         voice: 'alice',
@@ -108,11 +142,13 @@ app.post('/process-transcript', async (req, res) => {
       await client.calls(req.body.callSid).update({
         twiml: fallbackTwiml.toString()
       });
+      
+      console.log('✅ Fallback response sent');
     } catch (fallbackError) {
-      console.error('Fallback error:', fallbackError);
+      console.error('❌ Fallback error:', fallbackError);
     }
     
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
