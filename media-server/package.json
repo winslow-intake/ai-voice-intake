@@ -12,6 +12,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@deepgram/sdk": "^4.9.0",
+    "axios": "^1.10.0",
     "ws": "^8.18.3"
   }
 }

@@ -1,7 +1,6 @@
 const express = require('express');
 const twilio = require('twilio');
 const PORT = process.env.PORT || 3000;
-const { transcribeAudio } = require('./deepgram');
 const { generateResponse } = require('./llm');
 const { textToSpeech } = require('./elevenlabs');
 
@@ -23,75 +22,46 @@ app.post('/voice', (req, res) => {
     track: 'inbound_track'
   });
 
-  // Initial greeting using Twilio TTS
-  twiml.say('Hi, this is Marcus from Langston and Wells. I understand you\'ve been in an accident. Please tell me what happened.', {
+  // Initial greeting using Twilio TTS (we'll upgrade this to ElevenLabs later)
+  twiml.say({
     voice: 'alice',
     language: 'en-US'
-  });
+  }, 'Hi, this is Marcus from Langston and Wells. I understand you\'ve been in an accident. Please tell me what happened.');
 
   // Leave stream running indefinitely — no record block here
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-app.post('/handle-recording', async (req, res) => {
-  console.log('Received recording:', req.body.RecordingUrl);
-  
+// This endpoint will be called by your media-server when it has a complete transcript
+app.post('/process-transcript', async (req, res) => {
   try {
-    // 1. Transcribe what they said
-    const transcript = await transcribeAudio(req.body.RecordingUrl);
-    console.log('Transcript:', transcript);
+    const { transcript, callSid } = req.body;
     
-    // 2. Generate AI response
+    if (!transcript || !callSid) {
+      return res.status(400).json({ error: 'Missing transcript or callSid' });
+    }
+
+    console.log('Processing transcript:', transcript);
+
+    // 1. Generate AI response
     const aiResponse = await generateResponse(transcript);
     console.log('AI Response:', aiResponse);
-    
-    // 3. Convert to speech with ElevenLabs
+
+    // 2. Convert to speech with ElevenLabs
     const audioBuffer = await textToSpeech(aiResponse);
     console.log('Generated audio buffer, size:', audioBuffer.length);
-    
-    // 4. Create response that plays the audio
-    const twiml = new twilio.twiml.VoiceResponse();
-    
-    // Convert buffer to base64 for Twilio
-    const base64Audio = audioBuffer.toString('base64');
-    
-    // Play the ElevenLabs audio
-    twiml.play({
-      loop: 1
-    }, `data:audio/mpeg;base64,${base64Audio}`);
-    
-    // After playing, ask if they need anything else
-    twiml.say('Is there anything else you\'d like to tell me about the accident?', {
-      voice: 'alice'
+
+    // 3. Send response back to media-server to play to caller
+    res.json({ 
+      success: true, 
+      response: aiResponse,
+      audioLength: audioBuffer.length 
     });
-    
-    // Record again for continued conversation
-    twiml.record({
-      maxLength: 10,
-      timeout: 3,
-      action: '/handle-recording',
-      transcribe: false
-    });
-    
-    res.type('text/xml');
-    res.send(twiml.toString());
-    
+
   } catch (error) {
-    console.error('Error processing recording:', error);
-    
-    // Fallback response
-    const twiml = new twilio.twiml.VoiceResponse();
-    twiml.say('I apologize, but I had trouble understanding that. Could you please repeat what happened?');
-    twiml.record({
-      maxLength: 10,
-      timeout: 3,
-      action: '/handle-recording',
-      transcribe: false
-    });
-    
-    res.type('text/xml');
-    res.send(twiml.toString());
+    console.error('Error processing transcript:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
