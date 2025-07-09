@@ -44,6 +44,9 @@ app.post('/voice', (req, res) => {
   res.send(twiml.toString());
 });
 
+// Store conversation history per call
+const conversationHistory = new Map();
+
 // This endpoint will be called by your media-server when it has a complete transcript
 app.post('/process-transcript', async (req, res) => {
   console.log('🔥 /process-transcript called with body:', req.body);
@@ -59,21 +62,38 @@ app.post('/process-transcript', async (req, res) => {
     console.log('✅ Processing transcript:', transcript);
     console.log('✅ Call SID:', callSid);
 
+    // Get or create conversation history for this call
+    if (!conversationHistory.has(callSid)) {
+      conversationHistory.set(callSid, [
+        { role: 'system', content: 'You are Marcus, a helpful receptionist at Langston and Wells law firm. You are speaking with someone who has been in an accident. Keep responses brief and conversational. Ask relevant follow-up questions to gather information about their accident.' },
+        { role: 'assistant', content: 'Hi, this is Marcus from Langston and Wells. I understand you\'ve been in an accident. Please tell me what happened.' }
+      ]);
+    }
+
+    // Add the user's message to conversation history
+    const history = conversationHistory.get(callSid);
+    history.push({ role: 'user', content: transcript });
+
+    console.log('📚 Conversation history length:', history.length);
+
     // Check if required functions exist
     if (!generateResponse) {
       console.error('❌ generateResponse function not found');
       return res.status(500).json({ error: 'generateResponse function not available' });
     }
 
-    if (!textToSpeech) {
-      console.error('❌ textToSpeech function not found');
-      return res.status(500).json({ error: 'textToSpeech function not available' });
-    }
-
-    // 1. Generate AI response
-    console.log('🤖 Generating AI response...');
-    const aiResponse = await generateResponse(transcript);
+    // 1. Generate AI response with conversation context
+    console.log('🤖 Generating AI response with context...');
+    const aiResponse = await generateResponse(transcript, history);
     console.log('✅ AI Response:', aiResponse);
+
+    // Add AI response to conversation history
+    history.push({ role: 'assistant', content: aiResponse });
+
+    // Keep only last 10 messages to avoid memory issues
+    if (history.length > 12) {
+      history.splice(2, 2); // Remove oldest user/assistant pair, keep system message
+    }
 
     // Truncate response if too long to avoid TwiML size limits
     const maxResponseLength = 500; // Keep responses under 500 characters
@@ -121,7 +141,8 @@ app.post('/process-transcript', async (req, res) => {
     res.json({ 
       success: true, 
       response: aiResponse,
-      twimlSize: twiml.toString().length
+      twimlSize: twiml.toString().length,
+      conversationLength: history.length
     });
 
   } catch (error) {
@@ -150,6 +171,16 @@ app.post('/process-transcript', async (req, res) => {
     
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
+});
+
+// Clean up conversation history when call ends
+app.post('/call-ended', (req, res) => {
+  const { callSid } = req.body;
+  if (callSid && conversationHistory.has(callSid)) {
+    conversationHistory.delete(callSid);
+    console.log('🧹 Cleaned up conversation history for call:', callSid);
+  }
+  res.json({ success: true });
 });
 
 app.listen(PORT, () => {
