@@ -2,6 +2,10 @@ const http = require('http');
 const WebSocket = require('ws');
 const { createClient, LiveTranscriptionEvents } = require('@deepgram/sdk');
 const axios = require('axios');
+require('dotenv').config();
+
+console.log('🚀 Starting media server...');
+console.log('Deepgram API Key:', process.env.DEEPGRAM_API_KEY ? 'Found' : 'Missing');
 
 const PORT = process.env.PORT || 8080;
 
@@ -38,17 +42,33 @@ function initializeDeepgram() {
     deepgramConnection.on(LiveTranscriptionEvents.Transcript, async (data) => {
       const transcript = data.channel.alternatives[0]?.transcript;
       if (transcript && transcript.trim()) {
-        console.log('📝 TRANSCRIPT:', transcript);
+        console.log('📝 RAW TRANSCRIPT:', transcript);
         
-        // Send transcript to main app for processing
-        try {
-          const response = await axios.post('https://ai-conversation-engine.onrender.com/process-transcript', {
-            transcript: transcript,
-            callSid: currentCallSid
-          });
-          console.log('✅ Transcript processed successfully');
-        } catch (error) {
-          console.error('❌ Error sending transcript to main app:', error);
+        // Add to transcript buffer
+        transcriptBuffer += ' ' + transcript.trim();
+        lastTranscriptTime = Date.now();
+        
+        console.log('🔄 BUFFER:', transcriptBuffer);
+        
+        // Clear any existing timeout
+        clearTimeout(sendTranscriptTimeout);
+        
+        // Check if this looks like a complete sentence or thought
+        const isCompleteSentence = 
+          transcript.trim().endsWith('.') || 
+          transcript.trim().endsWith('?') || 
+          transcript.trim().endsWith('!') ||
+          transcriptBuffer.trim().length > 50; // Or if buffer is getting long
+        
+        if (isCompleteSentence) {
+          console.log('✅ COMPLETE SENTENCE DETECTED');
+          await sendBufferedTranscript();
+        } else {
+          // Wait 2 seconds after last transcript chunk, then send what we have
+          sendTranscriptTimeout = setTimeout(async () => {
+            console.log('⏰ TIMEOUT - Sending buffered transcript');
+            await sendBufferedTranscript();
+          }, 2000);
         }
       }
     });
@@ -67,9 +87,16 @@ function initializeDeepgram() {
 }
 
 let currentCallSid = '';
+let transcriptBuffer = ''; // Buffer to accumulate partial transcripts
+let lastTranscriptTime = 0;
+let sendTranscriptTimeout;
 
 wss.on('connection', (ws) => {
   console.log('Twilio stream connected');
+  
+  // Reset transcript buffer for new call
+  transcriptBuffer = '';
+  lastTranscriptTime = 0;
   
   // Initialize Deepgram connection for this call
   initializeDeepgram();
@@ -106,6 +133,28 @@ wss.on('connection', (ws) => {
     }
   });
 });
+
+// Function to send buffered transcript
+async function sendBufferedTranscript() {
+  if (transcriptBuffer.trim().length > 0) {
+    const finalTranscript = transcriptBuffer.trim();
+    console.log('📤 SENDING FINAL TRANSCRIPT:', finalTranscript);
+    
+    // Reset buffer
+    transcriptBuffer = '';
+    
+    // Send to main app for processing
+    try {
+      const response = await axios.post('https://ai-conversation-engine.onrender.com/process-transcript', {
+        transcript: finalTranscript,
+        callSid: currentCallSid
+      });
+      console.log('✅ Transcript processed successfully');
+    } catch (error) {
+      console.error('❌ Error sending transcript to main app:', error);
+    }
+  }
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Listening on ws://0.0.0.0:${PORT}`);
