@@ -53,22 +53,26 @@ function initializeDeepgram() {
         // Clear any existing timeout
         clearTimeout(sendTranscriptTimeout);
         
-        // Check if this looks like a complete sentence or thought
+        // More lenient complete sentence detection
         const isCompleteSentence = 
           transcript.trim().endsWith('.') || 
           transcript.trim().endsWith('?') || 
           transcript.trim().endsWith('!') ||
-          transcriptBuffer.trim().length > 50; // Or if buffer is getting long
+          transcriptBuffer.trim().length > 30 || // Shorter threshold
+          transcript.includes('accident') ||
+          transcript.includes('injured') ||
+          transcript.includes('insurance') ||
+          transcript.includes('details');
         
         if (isCompleteSentence) {
           console.log('✅ COMPLETE SENTENCE DETECTED');
           await sendBufferedTranscript();
         } else {
-          // Wait 2 seconds after last transcript chunk, then send what we have
+          // Much shorter timeout - 800ms instead of 2 seconds
           sendTranscriptTimeout = setTimeout(async () => {
             console.log('⏰ TIMEOUT - Sending buffered transcript');
             await sendBufferedTranscript();
-          }, 2000);
+          }, 800);
         }
       }
     });
